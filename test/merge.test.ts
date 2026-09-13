@@ -111,4 +111,11 @@ describe("mergeServices", () => {
     ])[0];
     expect(row).toMatchObject({ status: "stopped", exitCode: 3 });
   });
+
+  test("networkBound copies onto the running row and is absent when stopped", () => {
+    const rows = mergeServices([{ ...docs, networkBound: true }], [], () => false);
+    expect(rows[0]).toMatchObject({ status: "running", networkBound: true });
+    const stopped = mergeServices([], [pinnedApi], () => false);
+    expect(stopped[0].networkBound).toBeUndefined();
+  });
 });

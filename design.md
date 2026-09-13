@@ -61,6 +61,7 @@ Fixed two-column workspace (sidebar min 300px). Header rows wrap rather than cli
 | accent | `#8ab4f8` | brand mark, links, add/primary sheet, caret, copy toast |
 | ink | `#0f1420` | text on accent / green fills |
 | running | `#4fb477` | on-dot, on-switch, Start fill |
+| network | `#e8913a` | network-bound star and legend |
 | busy | `#d4a72c` | starting/stopping |
 | error | `#e5534b` | counts, chips, kill hover, Remove |
 | error-fg | `#f28b82` | error log text |
@@ -100,7 +101,7 @@ Selection highlight: `#3a4a66`. Scrollbar thumb: `#3a3e46`.
 - Group header (`10px 12px 4px`, 11px): uppercase 600 `.06em` `#aeb4bf` (project name, or “Other”) · mono `running/total` dim · localhost port links `:3000` and any saved project links · project text buttons `start` / `stop` (hover `#23272e`, green / red) → `/api/projects/:id/start|stop`.
 - Row: `10px 1fr auto auto`, gap 10, margin `0 6px`, padding `7px 8px 7px 10px`, radius 6. Selected `#242932`, hover `#23272e`. Click selects.
   - Dot 8px: running `#4fb477` + ring; busy `#d4a72c` pulse `.8s`; stopped `#3a3e46`; running + `readiness: unhealthy` uses the error token and an `unhealthy` title.
-  - Name 500 (`#8b919c` if stopped) + port link `:3003` → `http://localhost:PORT`.
+  - Name 500 (`#8b919c` if stopped) + port link `:3003` → `http://localhost:PORT` for loopback-only services, `http://<board-host>:PORT` for network-bound ones (`svcHost(s)` in `app.js`: board-host is the host the board was opened on). A network-bound row also shows an orange `*` after the port (`title` = "listens on the network, not just localhost"); loopback-only and stopped rows show none.
   - Meta mono 11 dim: running `pid · cpu% · MB · up`; append `health <status> · <ms>ms` or the probe error when unhealthy; busy/starting `starting… waiting for :PORT`; stopped `stopped · saved` / `stopped` / `stopped · exit N` when a tracked process exited with that code.
   - Error pill only if >0: 600 11 `#e5534b` on `rgba(229,83,75,.12)`. `restart failed ×5` in the same token when crash-restart gave up.
   - CPU bar 40×3, track `#2a2e35`, fill accent (error above 75% of scale). Width `cpu/6*100%`, capped.
@@ -109,7 +110,7 @@ Selection highlight: `#3a4a66`. Scrollbar thumb: `#3a3e46`.
 
 ### Log pane — `#16181c`
 
-**A** (min 44, `8px 16px`, wrap, border `#2a2e35`): dot · name 600 14 · `localhost:PORT ↗` · state dim (`unhealthy` in the error token when the probe fails). Primary: **Start** green fill when stopped; **Restart** outlined when running; `starting…` disabled when busy. Then `···` (200px menu): Open in browser (`o`) · Open in editor · Copy run command (`c`) · ─ · Show errors only / Show all · Follow / Stop following · Clear log · ─ · Pin (unpinned) · Edit… (pinned) · Env… · Add to / Remove from project · Hide · Remove (red, pinned).
+**A** (min 44, `8px 16px`, wrap, border `#2a2e35`): dot · name 600 14 · `<host>:PORT ↗` (`svcUrlFor(s, port)` in `app.js`: `localhost` for loopback-only services, board host otherwise) · state dim (`unhealthy` in the error token when the probe fails). Primary: **Start** green fill when stopped; **Restart** outlined when running; `starting…` disabled when busy. Then `···` (200px menu): Open in browser (`o`) · Open in editor · Copy run command (`c`) · ─ · Show errors only / Show all · Follow / Stop following · Clear log · ─ · Pin (unpinned) · Edit… (pinned) · Env… · Add to / Remove from project · Hide · Remove (red, pinned).
 
 **B** (30px, mono 11 dim, border `#22262c`): click-to-copy `cwd` and `$ command` (glyph `#4a5160`, hover `#d7dae0`); `pid · cpu · MB · up` when running.
 
@@ -128,7 +129,7 @@ Selection highlight: `#3a4a66`. Scrollbar thumb: `#3a3e46`.
 
 ### Status bar — 28px, `#1c1f24`, border-top `#2a2e35`, mono 11 dim, `0 12px`
 
-`↑↓` select · `␣` on/off · `r` restart · `e` next err · `c` copy run cmd · `o` open · `/` filter. Keys `#d7dae0`. Right: `poll 3s · 127.0.0.1:4242`. Copy toast 1.6s here: `copied · <text>` accent / dim. Retire or remove while a server is running or starting in that checkout shows `Stop and retire · <names>` for 8s with a text-button action that kills those rows and retries.
+`↑↓` select · `␣` on/off · `r` restart · `e` next err · `c` copy run cmd · `o` open · `/` filter. Keys `#d7dae0`. Right: `* network` legend (only while a network-bound service is visible, like error chips) · `poll 3s · 127.0.0.1:4242`. Copy toast 1.6s here: `copied · <text>` accent / dim. Retire or remove while a server is running or starting in that checkout shows `Stop and retire · <names>` for 8s with a text-button action that kills those rows and retries.
 
 ### Overlay sheets
 
@@ -137,11 +138,12 @@ Graphite surfaces (`#1c1f24`, border `#2a2e35`, radius 7, same shadow). Used for
 ## Behaviour
 
 - Select by row click or `↑↓` / `j`/`k` through **visible** (filtered) rows. Changing selection resets the error cursor, closes Trace, and, if follow is on, scrolls the log to the tail. Persist `sel` in `localStorage`. `?sel=<id>` (tray Logs) selects that row on load and writes the same key.
-- `Space` toggles the selected server. `r` restarts if running. Restarting an unpinned row whose command still has quotes or shell metacharacters (rebuilt from `ps`) returns 409 and opens Edit so you can check quoting; Save pins and restarts. `e` next error. `c` copies `cd <cwd> && <command>`. `o` opens `http://localhost:<port>`.
+- `Space` toggles the selected server. `r` restarts if running. Restarting an unpinned row whose command still has quotes or shell metacharacters (rebuilt from `ps`) returns 409 and opens Edit so you can check quoting; Save pins and restarts. `e` next error. `c` copies `cd <cwd> && <command>`. `o` opens `http://<board-host>:<port>`.
 - Busy is optimistic: switch, dot, and primary go amber until `/api/services` agrees (or 15s). On start, append `=== devboard start · <cmd>` and `$ <cmd>` immediately.
+- Service links (sidebar ports, log-pane host, worktree ports, Open in browser, `o` key, preset URL defaults) use `svcHost(s)` in `app.js`: the board host (`location.hostname`) when the service is network-bound, plain `localhost` when it only listens on loopback — so loopback-only services never send a LAN viewer to a wrong host (amended: per-service host after LAN testing showed localhost-only rows mislinking). Aggregate links with no single owner (group headers resolve per-port from members; worktree cards) default to the board host.
 - Follow is on by default. Next-error turns it off. Resume follow turns it on and jumps to the tail. Scrolling away from the tail also turns it off.
 - Poll `/api/services` every 3s. The selected log loads `?lines=4000` once, then polls `?from=<byte cursor>` every 1s and appends only what arrived — an idle poll is a few hundred bytes and nothing already on screen is re-rendered. A full repaint happens only when view state changes (selection, filter, errors-only, status). The page keeps at most 10 000 entries: older ones drop off the front and the line numbers keep counting up. `reset` (the log was cleared or rotated) reloads the window.
-- Copy via `navigator.clipboard.writeText`, then the status-bar toast.
+ - Copy via `navigator.clipboard.writeText` with a hidden-textarea `execCommand("copy")` fallback for non-secure contexts (Safari on a LAN IP rejects the Clipboard API), then the status-bar toast.
 - One open menu. Outside click or item click closes it.
 - Destructive actions (stop all, project stop, kill system, remove, clear log) still confirm.
 

@@ -1,8 +1,16 @@
 import type { Listener, Process, RunningService } from "./types";
 
+/** True when a bind address is reachable off this machine. `*` (all
+ * interfaces) and any specific non-loopback IP count; loopback does not. */
+export function isNetworkBound(address: string): boolean {
+  let addr = address.trim().toLowerCase();
+  if (addr.startsWith("[") && addr.endsWith("]")) addr = addr.slice(1, -1);
+  return !(addr === "localhost" || addr === "::1" || addr === "127.0.0.1" || addr.startsWith("127."));
+}
+
 export function parseListeners(text: string): Listener[] {
   const out: Listener[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   let pid = 0;
   let command = "";
   for (const line of text.split("\n")) {
@@ -18,10 +26,17 @@ export function parseListeners(text: string): Listener[] {
       if (idx < 0) continue;
       const port = Number(value.slice(idx + 1));
       if (!Number.isInteger(port)) continue;
+      const address = value.slice(0, idx);
       const key = `${pid}:${port}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ pid, command, port, address: value.slice(0, idx) });
+      const at = seen.get(key);
+      if (at !== undefined) {
+        // Dual-stack loopback shows up twice (127.0.0.1 + ::1); keep one row
+        // but prefer a network-bound address so the badge survives dedupe.
+        if (!isNetworkBound(out[at].address) && isNetworkBound(address)) out[at] = { pid, command, port, address };
+        continue;
+      }
+      seen.set(key, out.length);
+      out.push({ pid, command, port, address });
     }
   }
   return out;
@@ -153,11 +168,13 @@ export function groupServices(listeners: Listener[], processes: Process[], selfP
   const { byPid, byPpid } = indexProcesses(processes);
   const stop = selfAndAncestors(selfPid, byPid);
   const portsByRoot = new Map<number, Set<number>>();
+  const networkByRoot = new Map<number, boolean>();
   for (const l of listeners) {
     const root = findRoot(l.pid, byPid, stop);
     const ports = portsByRoot.get(root) ?? new Set<number>();
     ports.add(l.port);
     portsByRoot.set(root, ports);
+    if (isNetworkBound(l.address)) networkByRoot.set(root, true);
   }
   const out: RunningService[] = [];
   for (const [rootPid, ports] of portsByRoot) {
@@ -171,6 +188,7 @@ export function groupServices(listeners: Listener[], processes: Process[], selfP
       rootPid,
       pids,
       ports: [...ports].sort((a, b) => a - b),
+      ...(networkByRoot.get(rootPid) ? { networkBound: true } : {}),
       command,
       commandLossy: commandLooksLossy(command),
       name: exeName(root.args),

@@ -15,6 +15,8 @@ export type RunningService = {
   rootPid: number;
   pids: number[];
   ports: number[];
+  /** True when any listener is bound off loopback (reachable from the LAN). */
+  networkBound?: boolean;
   cwd?: string;
   command: string;
   commandLossy?: boolean;
@@ -65,6 +67,8 @@ export type Service = {
   pinned: boolean;
   hasLog: boolean;
   hidden: boolean;
+  /** True when a running listener is bound off loopback. Absent when stopped. */
+  networkBound?: boolean;
   readiness: Readiness;
   healthUrl?: string;
   health?: { ok: boolean; status?: number; ms: number; error?: string };
@@ -194,4 +198,9 @@ export type StaleWorktree = {
   gitdir?: string;
   reason: StaleReason;
   detail: string;
+};
+
+/** Optional `config.json` in `DEVBOARD_HOME`. Loopback hosts are always allowed. */
+export type BoardConfig = {
+  allowedHosts?: string[];
 };

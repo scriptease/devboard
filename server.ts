@@ -31,6 +31,7 @@ export type Deps = {
   control: Control;
   crashes?: CrashWatch;
   allowedHosts?: string[];
+  loadAllowedHosts?: () => Promise<string[]>;
   snapshot?: () => Promise<BoardSnapshot>;
   cacheMs?: number;
   readProcessEnv?: (pid: number) => Promise<Record<string, string>>;
@@ -49,7 +50,26 @@ function hostnameOf(value: string): string | null {
 }
 
 function isAllowedHost(host: string, extra: string[]): boolean {
-  return LOOPBACK_HOSTS.includes(host) || extra.includes(host);
+  const normalized = host.trim().toLowerCase();
+  return LOOPBACK_HOSTS.includes(normalized) || extra.includes(normalized);
+}
+
+/** Static `allowedHosts` plus the JSON-config list, normalized and deduped.
+ * A failing config read falls back to the static list so one bad file
+ * cannot lock out loopback. */
+async function resolveAllowedHosts(deps: Deps): Promise<string[]> {
+  const out: string[] = [];
+  for (const raw of deps.allowedHosts ?? []) {
+    const host = raw.trim().toLowerCase();
+    if (host && !out.includes(host)) out.push(host);
+  }
+  try {
+    for (const raw of (await deps.loadAllowedHosts?.()) ?? []) {
+      const host = raw.trim().toLowerCase();
+      if (host && !out.includes(host)) out.push(host);
+    }
+  } catch {}
+  return out;
 }
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
@@ -208,7 +228,7 @@ export function createHandler(deps: Deps): BoardHandler {
   };
 
   const handle = async function handle(req: Request): Promise<Response> {
-    const extra = deps.allowedHosts ?? [];
+    const extra = await resolveAllowedHosts(deps);
     const urlHost = new URL(req.url).hostname;
     if (!isAllowedHost(urlHost, extra)) return fail("forbidden", 403);
 
@@ -746,12 +766,16 @@ export function createHandler(deps: Deps): BoardHandler {
 
 if (import.meta.main) {
   const port = Number(process.env.PORT ?? 4242);
+  const bindHost = process.env.DEVBOARD_HOST ?? "127.0.0.1";
   const registry = new Registry();
   const control = new Control();
   const crashes = new CrashWatch(control);
-  const fetch = createHandler({ discover: () => realDiscover(), registry, control, crashes, cacheMs: 3000 });
+  const fetch = createHandler({
+    discover: () => realDiscover(), registry, control, crashes, cacheMs: 3000,
+    loadAllowedHosts: () => registry.loadAllowedHosts(),
+  });
   const server = Bun.serve({
-    hostname: "127.0.0.1",
+    hostname: bindHost,
     port,
     fetch,
   });
@@ -764,7 +788,7 @@ if (import.meta.main) {
       if (restarted.length) console.log(`${new Date().toISOString()} crash-restart ${restarted.join(",")}`);
     } catch {}
   }, 3000);
-  console.log(`devboard → http://127.0.0.1:${server.port}`);
+  console.log(`devboard → http://${server.hostname}:${server.port}`);
   if (process.env.DEVBOARD_TRAY !== "0") {
     const app = join(homedir(), "Applications", "Devboard.app");
     if (existsSync(app)) {

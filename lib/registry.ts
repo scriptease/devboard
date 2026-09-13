@@ -2,7 +2,7 @@ import { chmod, mkdir, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { assignMember, pruneProjectMembers, removeMember, renameMember } from "./projects";
-import type { Pinned, Preset, Project, ProjectLink, RunningService, Tracked } from "./types";
+import type { BoardConfig, Pinned, Preset, Project, ProjectLink, RunningService, Tracked } from "./types";
 
 export const DEVBOARD_HOME = process.env.DEVBOARD_HOME ?? join(homedir(), ".devboard");
 
@@ -79,6 +79,30 @@ function presetField(v: unknown): string {
   if (typeof o.id !== "string" || !o.id) return "id";
   if (typeof o.name !== "string") return "name";
   return "serviceIds";
+}
+
+/** Normalize one allowlist entry to a bare lowercase hostname. Accepts
+ * bare hosts, `host:port`, and full URLs. Returns undefined when unusable. */
+export function normalizeAllowedHost(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  let s = v.trim().toLowerCase();
+  if (!s) return undefined;
+  if (s.includes("://")) {
+    try {
+      s = new URL(s).hostname;
+    } catch {
+      return undefined;
+    }
+  } else {
+    // Strip a trailing :port, keeping bracketed IPv6 ([::1]:4242 -> ::1).
+    const bracket = /^\[([^\]]+)\](?::\d+)?$/.exec(s);
+    if (bracket) s = bracket[1];
+    else {
+      const port = /:(\d+)$/.exec(s);
+      if (port && !s.slice(0, -port[0].length).includes(":")) s = s.slice(0, -port[0].length);
+    }
+  }
+  return s || undefined;
 }
 
 export class Registry {
@@ -310,6 +334,38 @@ export class Registry {
 
   get presetsPath(): string {
     return join(this.home, "presets.json");
+  }
+
+  get configPath(): string {
+    return join(this.home, "config.json");
+  }
+
+  async loadConfig(): Promise<BoardConfig> {
+    const raw = await this.readJson(this.configPath);
+    if (raw === undefined) return {};
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      skip(this.configPath, "not an object");
+      return {};
+    }
+    return raw as BoardConfig;
+  }
+
+  /** Extra non-loopback hosts allowed to reach the board, from `config.json`.
+   * Loopback is always allowed and never needs listing here. Missing file,
+   * invalid JSON, or a non-array value all mean []. Never writes. */
+  async loadAllowedHosts(): Promise<string[]> {
+    const { allowedHosts } = await this.loadConfig();
+    if (allowedHosts === undefined) return [];
+    if (!Array.isArray(allowedHosts)) {
+      skip(this.configPath, "allowedHosts");
+      return [];
+    }
+    const out: string[] = [];
+    for (const v of allowedHosts) {
+      const host = normalizeAllowedHost(v);
+      if (host && !out.includes(host)) out.push(host);
+    }
+    return out;
   }
 
   async loadPresets(): Promise<Preset[]> {

@@ -47,7 +47,8 @@ After install, any terminal:
 
 | Variable | Default | What it does |
 |---|---|---|
-| `PORT` | `4242` | Port the board binds on `127.0.0.1` |
+| `PORT` | `4242` | Port the board binds |
+| `DEVBOARD_HOST` | `127.0.0.1` | Interface the board binds (e.g. `0.0.0.0` for LAN; pair with `config.json` below) |
 | `DEVBOARD_URL` | `http://127.0.0.1:4242` | Board the CLI talks to |
 | `DEVBOARD_HOME` | `~/.devboard` | Pinned list, projects, presets, ignored ids, and logs |
 | `DEVBOARD_TRAY` | unset (on) | Set `0` to start the server without the menu bar extra |
@@ -55,6 +56,14 @@ After install, any terminal:
 The menu bar extra reads `DevboardURL` from its Info.plist (default `http://127.0.0.1:4242`). Changing `PORT` or `DEVBOARD_URL` for an already-built tray needs `bun run tray:build` again.
 
 `~/.devboard` holds `services.json`, `projects.json`, `presets.json`, `ignored.json`, and `logs/<id>.log`. Files are re-read on every request, so hand edits work without a restart.
+
+Optional `~/.devboard/config.json` (re-read per request, never written by the board):
+
+```json
+{ "allowedHosts": ["192.168.1.20", "mymac.local"] }
+```
+
+Loopback (`127.0.0.1`, `localhost`, `::1`) is always allowed and never needs listing. Entries accept bare hosts, `host:port`, or full URLs and are matched as hostnames. To serve the board off-loopback, set `DEVBOARD_HOST` (e.g. `0.0.0.0`) **and** list the connecting host here — otherwise requests get 403.
 
 ## Why
 
@@ -113,7 +122,7 @@ Click an id in the log pane (UUID, 16+ hex, `req-…` / `req_…`, a W3C `tracep
 
 ## Security
 
-Loopback only. The API kills process trees and runs saved shell commands. Never bind off `127.0.0.1`. There is no remote or multi-machine mode, and no auth — one user, one machine.
+Loopback only by default. The API kills process trees and runs saved shell commands. Binding off `127.0.0.1` (via `DEVBOARD_HOST`) exposes that power to the network with no auth — only do it on a trusted LAN, and only with `config.json` `allowedHosts` set.
 
 Requests whose Host or Origin is not loopback (`127.0.0.1`, `localhost`, `::1`), or whose `Sec-Fetch-Site` is present and not `same-origin` or `none`, get 403. Non-GET requests must be `application/json` (415 otherwise). There are no CORS headers.
 

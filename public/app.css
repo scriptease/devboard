@@ -20,6 +20,7 @@
   --busy: #d4a72c;
   --err: #e5534b;
   --err-fg: #f28b82;
+  --net: #e8913a;
   --warn: #e2b96a;
   --ok: #8fd3a6;
   --ink: #0f1420;
@@ -343,6 +344,7 @@ input, textarea { font: inherit; color: var(--fg); }
 }
 .row.off .n { color: var(--dim); }
 .row-name .port { font: 11px var(--mono); flex: none; }
+.row-name .net { color: var(--net); font-size: 11px; flex: none; cursor: default; }
 .row-meta {
   font: 11px var(--mono);
   color: var(--dim);
@@ -702,6 +704,8 @@ input, textarea { font: inherit; color: var(--fg); }
 }
 .hints { display: flex; gap: 14px; }
 .hints b { color: var(--fg); font-weight: 400; }
+.legend { display: flex; align-items: center; gap: 5px; }
+.legend .net { color: var(--net); }
 .toast {
   margin-left: auto;
   color: var(--accent);

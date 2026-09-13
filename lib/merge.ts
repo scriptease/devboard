@@ -40,6 +40,7 @@ export function mergeServices(
       rootPid: r.rootPid,
       pids: r.pids,
       ports: r.ports,
+      ...(r.networkBound ? { networkBound: true } : {}),
       cwd: r.cwd,
       command: r.command,
       ...(r.commandLossy ? { commandLossy: true } : {}),

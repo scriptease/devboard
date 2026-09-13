@@ -654,6 +654,36 @@ describe("request gate", () => {
     const res = await call("POST", "/api/ignore", { id: "gate-cli" });
     expect(res.status).toBe(200);
   });
+
+  test("loadAllowedHosts from config.json is re-read per request; loopback never needs listing", async () => {
+    const lanHome = realpathSync(mkdtempSync(join(tmpdir(), "devboard-lan-")));
+    const lanRegistry = new Registry(lanHome);
+    const lanHandle = createHandler({
+      discover: async () => [],
+      registry: lanRegistry,
+      control: new Control(lanHome),
+      loadAllowedHosts: () => lanRegistry.loadAllowedHosts(),
+    });
+    const get = (host: string) => lanHandle(new Request(`http://${host}/api/services`));
+    expect((await get("192.168.1.20:4242")).status).toBe(403);
+    expect((await get("127.0.0.1:4242")).status).toBe(200);
+    writeFileSync(join(lanHome, "config.json"), JSON.stringify({ allowedHosts: ["192.168.1.20"] }));
+    expect((await get("192.168.1.20:4242")).status).toBe(200);
+    expect((await get("evil.example")).status).toBe(403);
+    rmSync(lanHome, { recursive: true, force: true });
+  });
+
+  test("a failing loadAllowedHosts falls back to the static list", async () => {
+    const fallback = createHandler({
+      discover: async () => [],
+      registry,
+      control,
+      allowedHosts: ["devboard.test"],
+      loadAllowedHosts: async () => { throw new Error("disk gone"); },
+    });
+    expect((await fallback(new Request("http://devboard.test/api/services"))).status).toBe(200);
+    expect((await fallback(new Request("http://evil.example/api/services"))).status).toBe(403);
+  });
 });
 
 describe("tracked process status", () => {

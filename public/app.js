@@ -85,7 +85,28 @@ function toastBusyWorktree(names, rootPids, path, force, remove) {
 }
 function copy(text) {
   const t = String(text ?? "");
-  navigator.clipboard.writeText(t).then(() => toast(t, true)).catch(() => toast("could not copy"));
+  const done = (ok) => toast(ok ? t : "could not copy", ok);
+  // execCommand fallback for non-secure contexts (e.g. Safari on a LAN IP,
+  // where navigator.clipboard rejects). Must run in the click/key handler.
+  const legacy = () => {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = t;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;font-size:16px;";
+      document.body.appendChild(ta);
+      ta.focus({ preventScroll: true });
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      const ok = document.execCommand("copy");
+      ta.remove();
+      done(ok);
+    } catch {
+      done(false);
+    }
+  };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(t).then(() => done(true)).catch(legacy);
+  else legacy();
 }
 function paintToast() {
   const el = $("#toast");
@@ -263,6 +284,12 @@ function healthNote(s) {
   return "unhealthy";
 }
 function portOf(s) { return s.ports?.[0]; }
+/** Host for a service link: the board host when the service is reachable off
+ * this machine, plain localhost when it only listens on loopback. */
+function svcHost(s) { return s?.networkBound ? location.hostname : "localhost"; }
+function svcUrlFor(s, port) { return `http://${svcHost(s)}:${port}`; }
+/** Aggregate links (group headers, worktrees) with no single owning service. */
+function svcUrl(port) { return `http://${location.hostname}:${port}`; }
 function runCmd(s) { return `cd ${s.cwd || "."} && ${s.command || ""}`; }
 
 function visible() {
@@ -342,7 +369,11 @@ function paintList() {
     const on = members.filter((s) => s.status === "running").length;
     const ports = [...new Set((p.ports ?? []).concat(members.flatMap((s) => s.ports)))].sort((a, b) => a - b);
     const links = [
-      ...ports.map((port) => `<a class="port" href="http://localhost:${port}" target="_blank" rel="noopener" data-act="open-port">:${port}</a>`),
+      ...ports.map((port) => {
+        const owner = members.find((m) => m.ports.includes(port));
+        const url = owner && !owner.networkBound ? `http://localhost:${port}` : svcUrl(port);
+        return `<a class="port" href="${url}" target="_blank" rel="noopener" data-act="open-port">:${port}</a>`;
+      }),
       ...(p.links ?? []).map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>`),
     ].join("");
     parts.push(`<div class="g-head">
@@ -400,7 +431,7 @@ function rowHtml(s) {
   return `<div class="row ${state}${sel === s.id ? " sel" : ""}" data-id="${esc(s.id)}" data-act="select">
     <span class="dot ${state}${isUnhealthy(s) ? " bad" : ""}" title="${isUnhealthy(s) ? "unhealthy" : ""}"></span>
     <span class="row-main">
-      <span class="row-name"><span class="n">${esc(s.name)}</span>${port ? `<a class="port" href="http://localhost:${port}" target="_blank" rel="noopener" data-act="open-port">:${port}</a>` : ""}</span>
+      <span class="row-name"><span class="n">${esc(s.name)}</span>${port ? `<a class="port" href="${svcUrlFor(s, port)}" target="_blank" rel="noopener" data-act="open-port">:${port}</a>` : ""}${s.networkBound ? `<span class="net" title="listens on the network, not just localhost">*</span>` : ""}</span>
       <span class="row-meta">${esc(meta)}</span>
     </span>
     <span class="row-right">
@@ -455,7 +486,7 @@ function paintLogHead() {
   a.innerHTML = `
     <span class="dot ${state}${isUnhealthy(s) ? " bad" : ""}" title="${isUnhealthy(s) ? "unhealthy" : ""}"></span>
     <span class="name">${esc(s.name)}</span>
-    ${port ? `<a class="host" href="http://localhost:${port}" target="_blank" rel="noopener">localhost:${port} ↗</a>` : ""}
+    ${port ? `<a class="host" href="${svcUrlFor(s, port)}" target="_blank" rel="noopener">${esc(svcHost(s))}:${port} ↗</a>` : ""}
     <span class="state">${esc(stateLabel)}</span>
     <span class="log-acts">
       <button type="button" class="primary-go ${primaryClass}" data-act="primary" ${state === "busy" ? "disabled" : ""}>${esc(primaryLabel)}</button>
@@ -689,6 +720,7 @@ function render() {
   paintList();
   paintLog();
   paintMenus();
+  $("#netLegend").hidden = !latest.some((s) => s.networkBound);
 }
 
 function select(id) {
@@ -880,7 +912,7 @@ function openPresetForm(p) {
     $("#presetFormTitle").textContent = `Edit ${p.name}`;
     $("#presetSubmit").textContent = "Save changes";
   } else {
-    f.elements.urls.value = dev.filter((s) => s.status === "running" && s.ports[0]).map((s) => `http://127.0.0.1:${s.ports[0]}`).join("\n");
+    f.elements.urls.value = dev.filter((s) => s.status === "running" && s.ports[0]).map((s) => svcUrlFor(s, s.ports[0])).join("\n");
     $("#presetFormTitle").textContent = "Save a preset";
     $("#presetSubmit").textContent = "Save preset";
   }
@@ -940,7 +972,7 @@ function paintWt() {
       w.locked ? `<span class="badge locked">locked</span>` : "",
       w.detached ? `<span class="badge">detached</span>` : "",
     ].join(" ");
-    const ports = w.ports.map((p) => `<a href="http://localhost:${p}" target="_blank" rel="noopener">:${p}</a>`).join(" ");
+    const ports = w.ports.map((p) => `<a href="${svcUrl(p)}" target="_blank" rel="noopener">:${p}</a>`).join(" ");
     return `<article class="wt-card" data-path="${esc(w.path)}">
       <div class="badge">${esc(w.branch || "detached")} · ${w.diskMb == null ? "…" : `${w.diskMb} MB`}</div>
       <div class="name">${esc(name)}</div>
@@ -1135,7 +1167,7 @@ document.addEventListener("click", async (ev) => {
   if (act === "open-browser" && s) {
     closeMenu();
     const p = portOf(s);
-    if (p) window.open(`http://localhost:${p}`, "_blank", "noopener");
+    if (p) window.open(svcUrlFor(s, p), "_blank", "noopener");
     return;
   }
   if (act === "toggle-err-only") { closeMenu(); errOnly = !errOnly; markLogDirty(); paintLog(); return; }
@@ -1510,7 +1542,7 @@ document.addEventListener("keydown", (ev) => {
   else if (ev.key === "o" && !ev.metaKey && !ev.ctrlKey) {
     const s = selected();
     const p = s && portOf(s);
-    if (p) window.open(`http://localhost:${p}`, "_blank", "noopener");
+    if (p) window.open(svcUrlFor(s, p), "_blank", "noopener");
   }
 });
 

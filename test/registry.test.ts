@@ -178,4 +178,25 @@ describe("Registry", () => {
     );
     expect(readdirSync(registry.path.replace(/\/services\.json$/, "")).filter((n) => n.endsWith(".tmp"))).toEqual([]);
   });
+
+  test("loadAllowedHosts is [] when config.json is missing", async () => {
+    expect(await registry.loadAllowedHosts()).toEqual([]);
+  });
+
+  test("loadAllowedHosts normalizes bare hosts, host:port, URLs, and case, and dedupes", async () => {
+    writeFileSync(
+      registry.configPath,
+      JSON.stringify({ allowedHosts: ["192.168.1.20", "mymac.local:4242", "http://Other.local:3000/x", " MYMAC.LOCAL ", 42, "", "192.168.1.20"] }),
+    );
+    expect(await registry.loadAllowedHosts()).toEqual(["192.168.1.20", "mymac.local", "other.local"]);
+  });
+
+  test("loadAllowedHosts is [] for invalid JSON, a non-object, or a non-array value", async () => {
+    writeFileSync(registry.configPath, "{ nope\n");
+    expect(await registry.loadAllowedHosts()).toEqual([]);
+    writeFileSync(registry.configPath, "[1, 2]\n");
+    expect(await registry.loadAllowedHosts()).toEqual([]);
+    writeFileSync(registry.configPath, JSON.stringify({ allowedHosts: "192.168.1.20" }));
+    expect(await registry.loadAllowedHosts()).toEqual([]);
+  });
 });

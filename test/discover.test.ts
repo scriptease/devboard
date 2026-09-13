@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyCwds, commandLooksLossy, commandOf, exeName, findRoot, groupServices, indexProcesses, isWrapper, parseCwds, parseListeners, parseProcesses, selfAndAncestors, treePids } from "../lib/discover";
+import { applyCwds, commandLooksLossy, commandOf, exeName, findRoot, groupServices, indexProcesses, isNetworkBound, isWrapper, parseCwds, parseListeners, parseProcesses, selfAndAncestors, treePids } from "../lib/discover";
 
 const listenersText = await Bun.file(new URL("./fixtures/lsof-listeners.txt", import.meta.url)).text();
 const psText = await Bun.file(new URL("./fixtures/ps.txt", import.meta.url)).text();
@@ -209,5 +209,37 @@ describe("applyCwds", () => {
     expect(out.find((s) => s.rootPid === 683)!.name).toBe("ControlCenter");
     expect(out.find((s) => s.rootPid === 835)!.name).toBe("redis-server");
     expect(out.find((s) => s.rootPid === 64671)!.name).toBe("node"); // dev, but cwd / has no folder name
+  });
+});
+
+describe("networkBound", () => {
+  const procs = parseProcesses("  100   1  0.0  8192  00:05  node server.js\n");
+
+  test("isNetworkBound is true for *, 0.0.0.0, LAN IPs, and non-localhost names", () => {
+    expect(isNetworkBound("*")).toBe(true);
+    expect(isNetworkBound("0.0.0.0")).toBe(true);
+    expect(isNetworkBound("192.168.178.51")).toBe(true);
+    expect(isNetworkBound("mymac.local")).toBe(true);
+    expect(isNetworkBound("127.0.0.1")).toBe(false);
+    expect(isNetworkBound("127.0.0.2")).toBe(false);
+    expect(isNetworkBound("::1")).toBe(false);
+    expect(isNetworkBound("[::1]")).toBe(false);
+    expect(isNetworkBound("localhost")).toBe(false);
+    expect(isNetworkBound("LOCALHOST")).toBe(false);
+  });
+
+  test("a *-bound listener marks the service networkBound; loopback-only does not", () => {
+    const lan = groupServices(parseListeners("p100\ncnode\nn*:8080\n"), procs, 99999);
+    expect(lan).toHaveLength(1);
+    expect(lan[0]).toMatchObject({ ports: [8080], networkBound: true });
+    const lo = groupServices(parseListeners("p100\ncnode\nn127.0.0.1:8080\n"), procs, 99999);
+    expect(lo).toHaveLength(1);
+    expect(lo[0].networkBound).toBeUndefined();
+  });
+
+  test("parseListeners keeps one row per pid+port but prefers a network-bound address", () => {
+    expect(parseListeners("p100\ncnode\nn127.0.0.1:8080\nn*:8080\n")).toEqual([
+      { pid: 100, command: "node", port: 8080, address: "*" },
+    ]);
   });
 });
