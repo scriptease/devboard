@@ -49,6 +49,7 @@ function usage(code = 1): never {
   devboard stop-all        stop every running dev server
   devboard doctor          check bun, PATH tools, :4242, and the tray
   devboard up              start the board (and the menu bar) if needed
+  devboard down            stop the board; managed servers keep running
   devboard tray            show the menu bar extra
   devboard install         put \`devboard\` on your PATH and install the menu bar app
 `);
@@ -81,6 +82,48 @@ async function up() {
     Bun.spawn(["open", "-g", "-a", APP], { stdout: "ignore", stderr: "ignore", stdin: "ignore" }).unref();
   }
   console.log(`board ${base}`);
+}
+
+function boardPort(): number {
+  try {
+    const u = new URL(base);
+    if (u.port) return Number(u.port);
+    return u.protocol === "https:" ? 443 : 80;
+  } catch {
+    return 4242;
+  }
+}
+
+async function down() {
+  if (!(await isUp())) {
+    console.log(`board is off at ${base}`);
+    return;
+  }
+  const port = boardPort();
+  const lsof = Bun.which("lsof");
+  if (!lsof) throw new Error(`lsof not on PATH — stop the board with Ctrl-C or kill the process on :${port}`);
+  const list = Bun.spawn(["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  const text = await new Response(list.stdout).text();
+  await list.exited;
+  const pids = [...new Set(text.split(/\s+/).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!pids.length) throw new Error(`board answers at ${base} but no listener pid found on :${port} — stop it with Ctrl-C`);
+  for (const pid of pids) {
+    try { process.kill(pid, "SIGTERM"); } catch {}
+  }
+  const deadline = Date.now() + 5000;
+  while ((await isUp()) && Date.now() < deadline) await Bun.sleep(200);
+  if (await isUp()) {
+    for (const pid of pids) {
+      try { process.kill(pid, "SIGKILL"); } catch {}
+    }
+    const killDeadline = Date.now() + 2000;
+    while ((await isUp()) && Date.now() < killDeadline) await Bun.sleep(200);
+  }
+  if (await isUp()) throw new Error(`board did not stop on ${base}`);
+  console.log(`board ${base} stopped`);
 }
 
 async function swiftReady(): Promise<boolean> {
@@ -178,6 +221,7 @@ try {
   if (cmd === "help" || raw.includes("-h") || raw.includes("--help")) usage(0);
   else if (cmd === "install") await install();
   else if (cmd === "up") await up();
+  else if (cmd === "down") await down();
   else if (cmd === "tray") launchTray();
   else if (cmd === "doctor") process.exit(await doctor());
   else if (!cmd || cmd === "status" || cmd === "ls") {

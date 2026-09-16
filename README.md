@@ -41,6 +41,7 @@ After install, any terminal:
     devboard stop-all
     devboard doctor        # bun, lsof, ps, :4242, PATH, tray
     devboard up            # start the board if it is off
+    devboard down          # stop the board (managed servers keep running)
     devboard tray          # show the menu bar extra
 
 ## Environment
@@ -76,7 +77,7 @@ pm2 and Overmind supervise processes you handed them. Port-killer menu apps list
 - **Pin.** Saves name, folder, command and port so the service can be started later. Matched to running rows by folder plus port, or folder plus port-stripped command when that match is unique. Switching an unsaved server off pins it first. A checked-in `devboard.json` is a pin template (not live status). Import it from + Add, a worktree card, Launch, or project Add from folder. Import never overwrites an existing pin.
 - **Start / Restart.** Runs the saved command in its folder via `/bin/sh -c`, detached, output appended to `~/.devboard/logs/<id>.log`. Closing the board does not stop what it started. Optional restart-on-crash (5 tries, exponential backoff) relaunches a stopped server whose last log looks like an error. Stop and Kill disarm it.
 - **Logs.** Last 4000 lines, refreshed every 2 seconds. Filter, jump between errors, follow the tail. Click a request id to trace it across the selected row's project (or every running `dev` row). Files exist only for services the board started. While the board is running, each file is capped at 5 MB (last 2 MB kept in `<id>.log.1`).
-- **CLI.** `ls [--json]`, `add`, `rm`, `pin`, `open`, `start`, `stop`, `restart`, `logs [-f]`, `start-all`, `stop-all`, `doctor`, `up`, `tray`. `stop-all` pins unsaved running rows first, like the page. `doctor` reports bun, `lsof`/`ps`, who holds `:4242`, `~/.local/bin` on PATH, and the tray app.
+- **CLI.** `ls [--json]`, `add`, `rm`, `pin`, `open`, `start`, `stop`, `restart`, `logs [-f]`, `start-all`, `stop-all`, `doctor`, `up`, `down`, `tray`. `stop-all` pins unsaved running rows first, like the page. `doctor` reports bun, `lsof`/`ps`, who holds `:4242`, `~/.local/bin` on PATH, and the tray app.
 - **Menu bar.** Count of servers on. Each row is a menu: Open, Restart, Stop, Copy run command, Logs (`?sel=<id>`). One notification when a service turns unhealthy or crash-restart gives up. Quitting the extra does not stop your servers. The tray bakes `DEVBOARD_URL` or `PORT` and the `package.json` version into Info.plist at `bun run tray:build`; rebuild to point it at another board.
 - **Projects, worktrees, presets, attention, env.** Group servers, inventory git checkouts, resume a named set, surface port conflicts and crashed pins, edit env overrides.
 
