@@ -101,6 +101,13 @@ describe("tree walk", () => {
     expect(isWrapper(p("/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter"))).toBe(false);
   });
 
+  test("runtime match is case-insensitive (macOS reports framework Python as 'Python')", () => {
+    const procs = parseProcesses("  100   1  0.0  8192  00:05  Python scripts/lazy_serve_proxy.py\n");
+    const services = groupServices(parseListeners("p100\ncPython\nn127.0.0.1:18083\n"), procs, 99999);
+    expect(services).toHaveLength(1);
+    expect(services[0]).toMatchObject({ ports: [18083], kind: "dev" });
+  });
+
   test("findRoot climbs pnpm dev -> stops at the login shell", () => {
     expect(findRoot(64734, byPid, SELF)).toBe(64672);
   });

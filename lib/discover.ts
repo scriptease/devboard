@@ -81,7 +81,7 @@ export function exeName(args: string): string {
 }
 
 export function isWrapper(p: Process): boolean {
-  const exe = exeName(p.args);
+  const exe = exeName(p.args).toLowerCase();
   if (WRAPPER_EXES.has(exe)) return true;
   if (SHELL_EXES.has(exe)) return p.args.trim().split(/\s+/)[1] === "-c";
   return false;
@@ -114,7 +114,7 @@ export function commandLooksLossy(command: string): boolean {
 }
 
 export function isRuntime(p: Process): boolean {
-  return RUNTIME_EXES.has(exeName(p.args));
+  return RUNTIME_EXES.has(exeName(p.args).toLowerCase());
 }
 
 export function indexProcesses(procs: Process[]) {
