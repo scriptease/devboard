@@ -2,6 +2,7 @@ import { chmod, mkdir, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { assignMember, pruneProjectMembers, removeMember, renameMember } from "./projects";
+import { primaryPort } from "./suggest";
 import type { BoardConfig, Pinned, Preset, Project, ProjectLink, RunningService, Tracked } from "./types";
 
 export const DEVBOARD_HOME = process.env.DEVBOARD_HOME ?? join(homedir(), ".devboard");
@@ -184,7 +185,12 @@ export class Registry {
 
   async pin(running: RunningService, name?: string): Promise<Pinned> {
     if (!running.cwd) throw new Error("cannot pin a service whose working directory is unknown");
-    return this.add({ name: name ?? running.name, cwd: running.cwd, command: running.command, port: running.ports[0] });
+    const port = primaryPort(running.ports);
+    const extraPorts = running.ports.filter((p) => p !== port);
+    return this.add({
+      name: name ?? running.name, cwd: running.cwd, command: running.command, port,
+      ...(extraPorts.length ? { extraPorts } : {}),
+    });
   }
 
   get ignoredPath(): string {

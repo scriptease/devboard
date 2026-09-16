@@ -33,10 +33,14 @@ export function parsePinTemplate(text: string): PinTemplateEntry[] {
     const cwd = typeof o.cwd === "string" && o.cwd.trim() ? o.cwd.trim() : undefined;
     const healthUrl = typeof o.healthUrl === "string" && o.healthUrl.trim() ? o.healthUrl.trim() : undefined;
     const env = asEnv(o.env);
+    const extraPorts = Array.isArray(o.extraPorts)
+      ? (o.extraPorts as unknown[]).map(Number).filter((p) => Number.isInteger(p) && p >= 1 && p <= 65535)
+      : undefined;
     out.push({
       name: o.name.trim(),
       command: o.command.trim(),
       port,
+      ...(extraPorts?.length ? { extraPorts } : {}),
       ...(cwd ? { cwd } : {}),
       ...(healthUrl ? { healthUrl } : {}),
       ...(env ? { env } : {}),
@@ -72,6 +76,7 @@ export function planImport(root: string, entries: PinTemplateEntry[], existing: 
       cwd,
       command: e.command,
       port: e.port,
+      ...(e.extraPorts?.length ? { extraPorts: e.extraPorts } : {}),
       ...(e.healthUrl ? { healthUrl: e.healthUrl } : {}),
       ...(e.env ? { env: e.env } : {}),
       ...(e.restartOnCrash ? { restartOnCrash: true } : {}),

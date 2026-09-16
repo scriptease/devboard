@@ -67,7 +67,7 @@ export function mergeServices(
       kind: "dev",
       status: starting ? "starting" : "stopped",
       ...(starting && t ? { rootPid: t.pid, pids: [t.pid] } : {}),
-      ports: [p.port],
+      ports: [p.port, ...(p.extraPorts ?? [])],
       cwd: p.cwd,
       command: p.command,
       pinned: true,

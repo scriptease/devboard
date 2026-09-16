@@ -41,6 +41,7 @@
       <div class="add-row">
         <input id="a-cmd" name="command" placeholder="command · bun run --watch src/index.ts" required>
         <input id="a-port" name="port" type="number" min="1" max="65535" placeholder="port" required>
+        <input id="a-extra" name="extraPorts" placeholder="extra ports · 9090, 5005" class="extra-ports">
       </div>
       <div class="add-acts">
         <button type="button" id="a-import" class="text" hidden>Import pins</button>
@@ -61,6 +62,7 @@
       </details>
     </div>
   </aside>
+  <div class="drag-handle" id="dragHandle"></div>
 
   <section class="logpane">
     <div class="log-a" id="logA"></div>
@@ -101,6 +103,7 @@
       <div class="row2">
         <label>Command<input id="f-cmd" name="command" required></label>
         <label>Port<input id="f-port" name="port" type="number" min="1" max="65535" required></label>
+        <label>Extra ports <span class="opt">comma-separated</span><input id="f-extra" name="extraPorts" placeholder="9090, 5005"></label>
       </div>
       <label>Health URL <span class="opt">optional</span><input id="f-health" name="healthUrl" placeholder="http://127.0.0.1:3003/health"></label>
       <label>Env overrides <span class="opt">KEY=value, one per line</span><textarea class="mono" id="f-env" name="envText" rows="4" placeholder="DATABASE_URL=postgres://localhost/app"></textarea></label>

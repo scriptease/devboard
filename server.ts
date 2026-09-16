@@ -371,8 +371,12 @@ export function createHandler(deps: Deps): BoardHandler {
         const info = await stat(folder).catch(() => undefined);
         if (!info?.isDirectory()) return fail(`folder does not exist: ${folder}`);
         const env = readEnvInput(body);
+        const extraPorts = Array.isArray(body.extraPorts)
+          ? (body.extraPorts as unknown[]).map(Number).filter((p) => Number.isInteger(p) && p >= 1 && p <= 65535)
+          : undefined;
         const input: Omit<Pinned, "id"> = {
           name: name.trim(), cwd: folder, command: command.trim(), port: portNum,
+          ...(extraPorts?.length ? { extraPorts } : {}),
           healthUrl: typeof healthUrl === "string" && healthUrl.trim() ? healthUrl.trim() : undefined,
           ...(env ? { env } : {}),
           ...(body.restartOnCrash === true ? { restartOnCrash: true } : {}),
@@ -764,10 +768,16 @@ export function createHandler(deps: Deps): BoardHandler {
   }
 }
 
+async function resolveBindHost(registry: Registry): Promise<string> {
+  if (process.env.DEVBOARD_HOST) return process.env.DEVBOARD_HOST;
+  const hosts = await registry.loadAllowedHosts();
+  return hosts.length ? "0.0.0.0" : "127.0.0.1";
+}
+
 if (import.meta.main) {
   const port = Number(process.env.PORT ?? 4242);
-  const bindHost = process.env.DEVBOARD_HOST ?? "127.0.0.1";
   const registry = new Registry();
+  const bindHost = await resolveBindHost(registry);
   const control = new Control();
   const crashes = new CrashWatch(control);
   const fetch = createHandler({

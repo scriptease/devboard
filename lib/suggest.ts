@@ -48,6 +48,14 @@ export function rewriteUrlPort(url: string, port: number): string {
   return url.replace(/^(https?:\/\/[^/:]+):\d+/i, `$1:${port}`);
 }
 
+/** Pick the most likely HTTP port from a list: prefer 8000-8099, 3000-3999, 80-99, 443-499. */
+export function primaryPort(ports: number[]): number {
+  if (ports.length <= 1) return ports[0];
+  const httpish = ports.filter((p) => (p >= 8000 && p < 8100) || (p >= 3000 && p < 4000) || (p >= 80 && p < 100) || (p >= 443 && p < 500));
+  if (httpish.length) return httpish.sort((a, b) => a - b)[0];
+  return ports[0];
+}
+
 const PREFERRED = ["dev", "start", "storybook", "preview"];
 const PREFERRED_PREFIX = /^(dev|start|storybook|preview):/;
 const SERVER_CMD = /\b(vite|next|nuxt|remix|astro|storybook|nodemon|webpack-dev-server|wrangler)\b|--watch\b|--hot\b|--port\b|\bPORT=|\btsx watch\b|\bbun --watch\b|\bbun --hot\b/i;

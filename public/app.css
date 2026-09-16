@@ -191,7 +191,7 @@ input, textarea { font: inherit; color: var(--fg); }
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-w, 380px) 6px minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -199,8 +199,18 @@ input, textarea { font: inherit; color: var(--fg); }
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 200px;
   border-right: 1px solid var(--border);
   background: var(--surface);
+}
+.drag-handle {
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+.drag-handle:hover, .drag-handle.active {
+  background: var(--accent);
+  opacity: .4;
 }
 .side-filter { padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .side-filter input,
@@ -835,7 +845,8 @@ input, textarea { font: inherit; color: var(--fg); }
 
 @media (max-width: 640px) {
   .row3 { grid-template-columns: 1fr; }
-  .workspace { grid-template-columns: minmax(0, 1fr); }
+  .workspace { grid-template-columns: minmax(0, 1fr) !important; }
+  .drag-handle { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

@@ -283,7 +283,16 @@ function healthNote(s) {
   if (s.health?.error) return `health ${s.health.error}`;
   return "unhealthy";
 }
-function portOf(s) { return s.ports?.[0]; }
+function portOf(s) { return primaryPort(s.ports ?? []); }
+function primaryPort(ports) {
+  if (ports.length <= 1) return ports[0];
+  const httpish = ports.filter((p) => (p >= 8000 && p < 8100) || (p >= 3000 && p < 4000) || (p >= 80 && p < 100) || (p >= 443 && p < 500));
+  if (httpish.length) return httpish.sort((a, b) => a - b)[0];
+  return ports[0];
+}
+function portLinks(s) {
+  return (s.ports ?? []).map((p) => `<a class="port" href="${svcUrlFor(s, p)}" target="_blank" rel="noopener" data-act="open-port">:${p}</a>`).join(" ");
+}
 /** Host for a service link: the board host when the service is reachable off
  * this machine, plain localhost when it only listens on loopback. */
 function svcHost(s) { return s?.networkBound ? location.hostname : "localhost"; }
@@ -291,6 +300,11 @@ function svcUrlFor(s, port) { return `http://${svcHost(s)}:${port}`; }
 /** Aggregate links (group headers, worktrees) with no single owning service. */
 function svcUrl(port) { return `http://${location.hostname}:${port}`; }
 function runCmd(s) { return `cd ${s.cwd || "."} && ${s.command || ""}`; }
+function parseExtraPorts(text) {
+  if (!text || !text.trim()) return undefined;
+  const ports = text.split(/[,\s]+/).map(Number).filter((p) => Number.isInteger(p) && p >= 1 && p <= 65535);
+  return ports.length ? ports : undefined;
+}
 
 function visible() {
   const q = query.trim().toLowerCase();
@@ -431,7 +445,7 @@ function rowHtml(s) {
   return `<div class="row ${state}${sel === s.id ? " sel" : ""}" data-id="${esc(s.id)}" data-act="select">
     <span class="dot ${state}${isUnhealthy(s) ? " bad" : ""}" title="${isUnhealthy(s) ? "unhealthy" : ""}"></span>
     <span class="row-main">
-      <span class="row-name"><span class="n">${esc(s.name)}</span>${port ? `<a class="port" href="${svcUrlFor(s, port)}" target="_blank" rel="noopener" data-act="open-port">:${port}</a>` : ""}${s.networkBound ? `<span class="net" title="listens on the network, not just localhost">*</span>` : ""}</span>
+      <span class="row-name"><span class="n">${esc(s.name)}</span>${portLinks(s)}${s.networkBound ? `<span class="net" title="listens on the network, not just localhost">*</span>` : ""}</span>
       <span class="row-meta">${esc(meta)}</span>
     </span>
     <span class="row-right">
@@ -486,7 +500,7 @@ function paintLogHead() {
   a.innerHTML = `
     <span class="dot ${state}${isUnhealthy(s) ? " bad" : ""}" title="${isUnhealthy(s) ? "unhealthy" : ""}"></span>
     <span class="name">${esc(s.name)}</span>
-    ${port ? `<a class="host" href="${svcUrlFor(s, port)}" target="_blank" rel="noopener">${esc(svcHost(s))}:${port} ↗</a>` : ""}
+    ${s.ports.length ? s.ports.map((p) => `<a class="host" href="${svcUrlFor(s, p)}" target="_blank" rel="noopener">${p === portOf(s) ? esc(svcHost(s)) + ":" : ":"}${p} ↗</a>`).join("") : ""}
     <span class="state">${esc(stateLabel)}</span>
     <span class="log-acts">
       <button type="button" class="primary-go ${primaryClass}" data-act="primary" ${state === "busy" ? "disabled" : ""}>${esc(primaryLabel)}</button>
@@ -851,6 +865,7 @@ async function openEdit(s, opts = {}) {
   f.elements.cwd.value = s.cwd ?? "";
   f.elements.command.value = s.command ?? "";
   f.elements.port.value = s.ports[0] ?? "";
+  f.elements.extraPorts.value = s.ports.length > 1 ? s.ports.slice(1).join(", ") : "";
   f.elements.healthUrl.value = s.healthUrl ?? "";
   f.elements.envText.value = formatEnv(s.env);
   f.elements.restartOnCrash.checked = !!s.restartOnCrash;
@@ -1440,7 +1455,7 @@ $("#addForm").onsubmit = async (ev) => {
   const f = ev.target;
   const data = Object.fromEntries(new FormData(f));
   try {
-    await api("POST", "/api/pinned", { name: data.name, cwd: data.cwd, command: data.command, port: Number(data.port) });
+    await api("POST", "/api/pinned", { name: data.name, cwd: data.cwd, command: data.command, port: Number(data.port), extraPorts: parseExtraPorts(data.extraPorts) });
     addOpen = false;
     f.hidden = true;
     f.reset();
@@ -1451,7 +1466,7 @@ $("#editForm").onsubmit = async (ev) => {
   ev.preventDefault();
   const f = ev.target;
   const data = Object.fromEntries(new FormData(f));
-  const body = { name: data.name, cwd: data.cwd, command: data.command, port: Number(data.port), healthUrl: data.healthUrl, envText: data.envText, restartOnCrash: f.elements.restartOnCrash.checked };
+  const body = { name: data.name, cwd: data.cwd, command: data.command, port: Number(data.port), extraPorts: parseExtraPorts(data.extraPorts), healthUrl: data.healthUrl, envText: data.envText, restartOnCrash: f.elements.restartOnCrash.checked };
   try {
     const pending = restartAfterSave;
     let id = editingId;
@@ -1552,3 +1567,19 @@ refresh();
 setInterval(paintClock, 1000);
 setInterval(refresh, 3000);
 setInterval(() => { if (sel) fetchLog(sel); }, 1000); // decision 4: 1s, matching `devboard logs -f`
+
+{
+  const handle = $("#dragHandle");
+  const ws = $(".workspace");
+  let dragging = false;
+  const startDrag = () => { dragging = true; handle.classList.add("active"); document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; };
+  const moveDrag = (x) => { ws.style.setProperty("--sidebar-w", Math.max(200, Math.min(x, window.innerWidth - 200)) + "px"); };
+  const endDrag = () => { if (!dragging) return; dragging = false; handle.classList.remove("active"); document.body.style.cursor = ""; document.body.style.userSelect = ""; try { localStorage.setItem("devboard.sidebarW", ws.style.getPropertyValue("--sidebar-w")); } catch {} };
+  handle.addEventListener("mousedown", (ev) => { ev.preventDefault(); startDrag(); });
+  document.addEventListener("mousemove", (ev) => { if (dragging) moveDrag(ev.clientX); });
+  document.addEventListener("mouseup", endDrag);
+  handle.addEventListener("touchstart", (ev) => { ev.preventDefault(); startDrag(); }, { passive: false });
+  document.addEventListener("touchmove", (ev) => { if (dragging) moveDrag(ev.touches[0].clientX); }, { passive: true });
+  document.addEventListener("touchend", endDrag);
+  try { const saved = localStorage.getItem("devboard.sidebarW"); if (saved) ws.style.setProperty("--sidebar-w", saved); } catch {}
+}

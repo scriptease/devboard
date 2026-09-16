@@ -35,6 +35,7 @@ export type Pinned = {
   cwd: string;
   command: string;
   port: number;
+  extraPorts?: number[];
   healthUrl?: string;
   env?: Record<string, string>;
   restartOnCrash?: boolean;
@@ -139,6 +140,7 @@ export type PinTemplateEntry = {
   name: string;
   command: string;
   port: number;
+  extraPorts?: number[];
   cwd?: string;
   healthUrl?: string;
   env?: Record<string, string>;
