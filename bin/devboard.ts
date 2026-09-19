@@ -45,6 +45,7 @@ function usage(code = 1): never {
   devboard stop <id>       stop a running server
   devboard restart <id>    restart
   devboard logs <id> [-f]  print the log; -f follows; --json prints the parsed entries
+  devboard project <cmd> <id>  start | stop | restart | status one project; ls lists them
   devboard start-all       start every saved server that is off
   devboard stop-all        stop every running dev server
   devboard doctor          check bun, PATH tools, :4242, and the tray
@@ -155,6 +156,14 @@ async function install() {
     Bun.spawn(["open", "-g", "-a", APP], { stdout: "ignore", stderr: "ignore", stdin: "ignore" }).unref();
   }
 }
+
+type ProjectView = {
+  id: string;
+  name: string;
+  memberIds: string[];
+  on: number;
+  off: number;
+};
 
 type Svc = {
   id?: string;
@@ -288,6 +297,41 @@ try {
       while (true) {
         await Bun.sleep(1000);
         await once();
+      }
+    }
+  } else if (cmd === "project") {
+    const [, sub, projectId] = positional;
+    const data = await api("GET", "/api/services") as { services: Svc[]; projects?: ProjectView[] };
+    const projects = data.projects ?? [];
+    if (sub === "ls" || (!sub && !projectId)) {
+      for (const p of projects) console.log(`${p.id}  ${p.name}  ${p.on} on  ${p.off} off`);
+    } else if (!projectId) {
+      usage();
+    } else {
+      const project = projects.find((p) => p.id === projectId);
+      if (!project) throw new Error(`no project ${projectId}`);
+      const report = (out: Record<string, unknown>) => {
+        for (const e of (out.errors ?? []) as { id: string; error: string }[]) console.error(`${e.id}: ${e.error}`);
+      };
+      if (sub === "status") {
+        for (const id of project.memberIds) {
+          const svc = data.services.find((s) => s.id === id);
+          console.log(`${svc?.status === "running" ? "on " : "off"}  ${id}  ${svc?.name ?? "?"}`);
+        }
+      } else if (sub === "start" || sub === "stop") {
+        const out = await api("POST", `/api/projects/${encodeURIComponent(projectId)}/${sub}`);
+        for (const s of (out.started ?? out.stopped ?? []) as ({ id: string } | string)[]) {
+          console.log(`${sub === "start" ? "started" : "stopped"} ${typeof s === "string" ? s : s.id}`);
+        }
+        report(out);
+      } else if (sub === "restart") {
+        const stopped = await api("POST", `/api/projects/${encodeURIComponent(projectId)}/stop`);
+        report(stopped);
+        const started = await api("POST", `/api/projects/${encodeURIComponent(projectId)}/start`);
+        for (const s of (started.started ?? []) as { id: string; pid: number }[]) console.log(`restarted ${s.id} pid ${s.pid}`);
+        report(started);
+      } else {
+        usage();
       }
     }
   } else if (cmd === "start-all") {
